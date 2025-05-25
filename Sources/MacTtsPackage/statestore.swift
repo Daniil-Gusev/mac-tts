@@ -2,7 +2,6 @@ import AVFoundation
 import AppKit
 import Darwin
 import Foundation
-import OggDecoder
 
 public actor StateStore {
   private var _allCapsBeep: Bool = false
@@ -57,22 +56,10 @@ public actor StateStore {
     set { _preDelay = newValue }
   }
 
-  private var _punctuations: String = "all"
+  private var _punctuations: String = "no"
   public var punctuations: String {
     get { _punctuations }
     set { _punctuations = newValue }
-  }
-
-  private var _audioTarget: String = "None"
-  public var audioTarget: String {
-    get { _audioTarget.lowercased() }
-    set { _audioTarget = newValue }
-  }
-
-  private var _soundVolume: Float = 1
-  public var soundVolume: Float {
-    get { _soundVolume }
-    set { _soundVolume = newValue }
   }
 
   private var _speechRate: Float = 0.5
@@ -85,12 +72,6 @@ public actor StateStore {
   public var splitCaps: Bool {
     get { _splitCaps }
     set { _splitCaps = newValue }
-  }
-
-  private var _toneVolume: Float = 1
-  public var toneVolume: Float {
-    get { _toneVolume }
-    set { _toneVolume = newValue }
   }
 
   private var _ttsDiscard: Bool = false
@@ -124,24 +105,9 @@ public actor StateStore {
   }
 
   public init() async {
-    self.soundVolume = 1.0
-    if let f = Float(self.getEnvironmentVariable("SWIFTMAC_SOUND_VOLUME")) {
-      self.soundVolume = f
-    }
-
-    self.toneVolume = 1.0
-    if let f = Float(self.getEnvironmentVariable("SWIFTMAC_TONE_VOLUME")) {
-      self.toneVolume = f
-    }
-
     if let f = Float(self.getEnvironmentVariable("SWIFTMAC_VOICE_VOLUME")) {
       self.voiceVolume = f
     }
-
-    self.audioTarget = self.getEnvironmentVariable("SWIFTMAC_AUDIO_TARGET")
-
-    debugLogger.log("soundVolume \(self.soundVolume)")
-    debugLogger.log("toneVolume \(self.toneVolume)")
     debugLogger.log("voiceVolume \(self.voiceVolume)")
   }
 
@@ -177,20 +143,12 @@ public actor StateStore {
     self._punctuations = value
   }
 
-  public func setSoundVolume(_ value: Float) {
-    self._soundVolume = value
-  }
-
   public func setSpeechRate(_ value: Float) {
     self._speechRate = value
   }
 
   public func setSplitCaps(_ value: Bool) {
     self._splitCaps = value
-  }
-
-  public func setToneVolume(_ value: Float) {
-    self._toneVolume = value
   }
 
   public func setTtsDiscard(_ value: Bool) {

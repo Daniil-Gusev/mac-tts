@@ -3,7 +3,6 @@ import AppKit
 import Darwin
 import Foundation
 import Network
-import OggDecoder
 
 /* Globals */
 #if DEBUG
@@ -15,63 +14,10 @@ import OggDecoder
 #else
   let debugLogger = Logger()  // No-Op
 #endif
-let version = "2.8.2"
-let name = "swiftmac"
+let version = "1.0"
+let name = "mac-tts"
 var ss = await StateStore()  // just create new one to reset
 let speaker = AVSpeechSynthesizer()
-let tonePlayer = TonePlayerActor()
-
-// notification support
-let engine = AVAudioEngine()
-let playerNode = AVAudioPlayerNode()
-let environmentNode = AVAudioEnvironmentNode()
-// Define a closure to handle the output buffer
-var outputFormat: AVAudioFormat?
-let bufferHandler: (AVAudioBuffer) -> Void = { buffer in
-  guard let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
-
-  if pcmBuffer.frameLength > 0 {
-    if outputFormat == nil {
-      outputFormat = pcmBuffer.format
-      engine.connect(playerNode, to: environmentNode, format: outputFormat)
-      engine.connect(environmentNode, to: engine.mainMixerNode, format: nil)
-      Task {
-        if await ss.audioTarget == "right" {
-          playerNode.position = AVAudio3DPoint(x: 1, y: 0, z: 0)
-        }
-        if await ss.audioTarget == "left" {
-          playerNode.position = AVAudio3DPoint(x: -1, y: 0, z: 0)
-        }
-      }
-      engine.prepare()
-
-      do {
-        try engine.start()
-      } catch {
-        print("Error starting audio engine: \(error.localizedDescription)")
-        return
-      }
-    }
-
-    // Schedule the buffer for playback
-    playerNode.scheduleBuffer(pcmBuffer)
-
-    if !playerNode.isPlaying {
-      playerNode.play()
-    }
-  }
-}
-
-func notificationMode() async -> Bool {
-  let at = await ss.audioTarget.lowercased()
-  if at == "right" {
-    return true
-  }
-  if at == "left" {
-    return true
-  }
-  return false
-}
 
 func parseCommandLineArguments() -> (port: Int?, shouldListen: Bool) {
   debugLogger.log("in parseCommandLineArguments")
@@ -179,15 +125,7 @@ func main() async {
     startNetworkListener(port: NWEndpoint.Port(rawValue: UInt16(port))!)
   }
 
-  if await notificationMode() {
-    await instantTtsSay("notification mode on")
-
-    // Setup notification audio routing
-    engine.attach(playerNode)
-    engine.attach(environmentNode)
-  } else {
-    await instantVersion()
-  }
+  await instantVersion()
 
   while let line = readLine() {
     await processInputLine(line)
@@ -204,12 +142,9 @@ func processInputLine(_ line: String) async {
   case "c": await processAndQueueCodes(params)
   case "d": await dispatchPendingQueue()
   case "l": await instantLetter(params)
-  case "p": await doPlaySound(params)
   case "q": await queueLine(cmd, params)
   case "s": await instantStopSpeaking()
   case "sh": await queueLine(cmd, params)
-  case "t": await queueLine(cmd, params)
-  case "tts_allcaps_beep": await queueLine(cmd, params)
   case "set_lang": await ttsSetVoice(params)
   case "tts_exit": await instantTtsExit()
   case "tts_reset": await instantTtsReset()
@@ -217,9 +152,7 @@ func processInputLine(_ line: String) async {
   case "tts_set_character_scale": await queueLine(cmd, params)
   case "tts_set_pitch_multiplier": await queueLine(cmd, params)
   case "tts_set_punctuations": await queueLine(cmd, params)
-  case "tts_set_sound_volume": await queueLine(cmd, params)
   case "tts_set_speech_rate": await instantSetSpeechRate(params)
-  case "tts_set_tone_volume": await queueLine(cmd, params)
   case "tts_set_voice": await queueLine(cmd, params)
   case "tts_set_voice_volume": await queueLine(cmd, params)
   case "tts_split_caps": await queueLine(cmd, params)
@@ -237,16 +170,11 @@ func dispatchPendingQueue() async {
   while let (cmd, params) = await ss.popFromPendingQueue() {
     debugLogger.log("got queued \(cmd) \(params)")
     switch cmd {
-    case "p": await doPlaySound(params)  // just like p in mainloop
     case "q": await doSpeak(params)
     case "sh": await doSilence(params)
-    case "t": await doTone(params)
-    case "tts_allcaps_beep": await ttsAllCapsBeep(params)
     case "tts_set_character_scale": await ttsSetCharacterScale(params)
     case "tts_set_pitch_multiplier": await ttsSetPitchMultiplier(params)
     case "tts_set_punctuations": await ttsSetPunctuations(params)
-    case "tts_set_sound_volume": await ttsSetSoundVolume(params)
-    case "tts_set_tone_volume": await ttsSetToneVolume(params)
     case "tts_set_voice": await ttsSetVoice(params)
     case "tts_set_voice_volume": await ttsSetVoiceVolume(params)
     case "tts_split_caps": await ttsSplitCaps(params)
@@ -294,8 +222,8 @@ func insertSpaceBeforeUppercase(_ input: String) -> String {
 
 func instantVersion() async {
   debugLogger.log("Enter: instantVersion")
-  let sayVersion = version.replacingOccurrences(of: ".", with: " dot ")
 
+  let sayVersion = version
   await instantStopSpeaking()
   #if DEBUG
     await instantTtsSay("\(name) \(sayVersion): debug mode")
@@ -322,12 +250,8 @@ func instantLetter(_ p: String) async {
   let oldPitchMultiplier = await ss.pitchMultiplier
   let oldPreDelay = await ss.preDelay
   if isFirstLetterCapital(p) {
-    if await ss.allCapsBeep {
-      await doTone("800 50")
-    } else {
       await ss.setPitchMultiplier(1.5)
     }
-  }
   let oldSpeechRate = await ss.speechRate
   await ss.setSpeechRate(await ss.getCharacterRate())
   await instantStopSpeaking()
@@ -341,9 +265,6 @@ func instantStopSpeaking() async {
   debugLogger.log("Enter: instantStopSpeaking")
   if speaker.isSpeaking {
     speaker.stopSpeaking(at: .immediate)
-  }
-  if playerNode.isPlaying {
-    playerNode.stop()
   }
 }
 
@@ -505,20 +426,6 @@ func ttsSetVoice(_ p: String) async {
   }
 }
 
-func ttsSetToneVolume(_ p: String) async {
-  debugLogger.log("Enter: ttsSetToneVolume")
-  if let f = Float(p) {
-    await ss.setToneVolume(f)
-  }
-}
-
-func ttsSetSoundVolume(_ p: String) async {
-  debugLogger.log("Enter: ttsSetSoundVolume")
-  if let f = Float(p) {
-    await ss.setSoundVolume(f)
-  }
-}
-
 func ttsSetVoiceVolume(_ p: String) async {
   debugLogger.log("Enter: ttsSetVoiceVolume")
   if let f = Float(p) {
@@ -552,16 +459,6 @@ func ttsSetCharacterScale(_ p: String) async {
   }
 }
 
-func ttsAllCapsBeep(_ p: String) async {
-  debugLogger.log("Enter: ttsAllCapsBeep")
-  if p == "1" {
-    await ss.setAllCapsBeep(true)
-  } else {
-    await ss.setAllCapsBeep(false)
-  }
-}
-
-// MainActor because this is explicitly to be atomic
 func instantTtsSyncState(_ p: String) async {
   debugLogger.log("Enter: processAndQueueSync")
   let ps = p.split(separator: " ")
@@ -570,60 +467,9 @@ func instantTtsSyncState(_ p: String) async {
     await ttsSetPunctuations(punct)
     let splitCaps = String(ps[1])
     await ttsSplitCaps(splitCaps)
-    let beepCaps = String(ps[2])
-    await ttsAllCapsBeep(beepCaps)
-    let rate = String(ps[3])
+    let rate = String(ps[2])
     await instantSetSpeechRate(rate)
 
-  }
-}
-
-func doTone(_ p: String) async {
-  debugLogger.log("Enter: doTone")
-  let ps = p.split(separator: " ")
-  Task {
-    await tonePlayer.playPureTone(
-      frequencyInHz: Int(ps[0]) ?? 500,
-      amplitude: await ss.toneVolume,
-      durationInMillis: Int(ps[1]) ?? 75
-    )
-  }
-}
-
-func doPlaySound(_ path: String) async {
-  debugLogger.log("Enter: doPlaySound")
-  let soundURL = URL(fileURLWithPath: path)
-
-  do {
-    let decodedURL: URL? = try await decodeIfNeeded(soundURL)
-    guard let url = decodedURL else {
-      debugLogger.log("Failed to get audio file URL from path: \(path)")
-      return
-    }
-
-    debugLogger.log("Playing sound from URL: \(url)")
-    let volume = await ss.soundVolume  // Assuming this is a property call or async method
-    Task {
-      await SoundManager.shared.playSound(from: url, volume: volume)
-    }
-  } catch {
-    debugLogger.log("An error occurred while trying to play sound: \(error)")
-    // Handle error or simply log it to allow continuation of program execution
-  }
-}
-
-/// Helper function to decode OGG files if necessary
-private func decodeIfNeeded(_ url: URL) async throws -> URL? {
-  if url.pathExtension.lowercased() == "ogg" {
-    debugLogger.log("Decoding OGG file at URL: \(url)")
-    let decoder = OGGDecoder()
-    return await withCheckedContinuation { continuation in
-      decoder.decode(url) { decodedUrl in
-        continuation.resume(returning: decodedUrl)
-      }
-    }
-  } else {
-    return url
   }
 }
 
@@ -708,14 +554,7 @@ func _doSpeak(_ what: String) async {
   utterance.voice = await ss.voice
 
   // Start speaking
-  if await notificationMode() {
-    DispatchQueue.global().async {
-      speaker.write(utterance, toBufferCallback: bufferHandler)
-    }
-  } else {
-    speaker.speak(utterance)
-  }
-
+  speaker.speak(utterance)
 }
 
 func instantTtsExit() async {
@@ -737,8 +576,12 @@ func isolateCmdAndParams(_ line: String) async -> (String, String) {
   debugLogger.log("Enter: isolateParams")
   let justCmd = await isolateCommand(line)
   let cmd = justCmd + " "
-
-  var params = line.replacingOccurrences(of: "^" + cmd, with: "", options: .regularExpression)
+  var params:String
+  if line.contains(" ") {
+    params = line.replacingOccurrences(of: "^" + cmd, with: "", options: .regularExpression)
+  } else {
+    params = ""
+  }
   params = params.trimmingCharacters(in: .whitespacesAndNewlines)
   if params.hasPrefix("{") && params.hasSuffix("}") {
     if let lastIndex = params.lastIndex(of: "}") {

@@ -5,23 +5,20 @@
 import PackageDescription
 
 let package = Package(
-  name: "SwiftMacPackage",
+  name: "MacTtsPackage",
   platforms: [
-    .macOS(.v13)
+    .macOS(.v11)
   ],
   products: [
     // Products define the executables and libraries a package
     // produces, and make them visible to other packages.
     .executable(
-      name: "swiftmac",
-      targets: ["swiftmac"])
+      name: "mactts",
+      targets: ["mactts"])
   ],
   dependencies: [
     // Dependencies declare other packages that this package
     // depends on.
-    // .package(url: /* package url */, from: "1.0.0"),
-    // .package(url: "https://github.com/robertmeta/OggDecoder.git", .upToNextMajor(from: "1.0.0"))
-    .package(url: "https://github.com/robertmeta/OggDecoder.git", branch: "main")
   ],
   targets: [
     // Targets are the basic building blocks of a package.
@@ -29,11 +26,10 @@ let package = Package(
     // Targets can depend on other targets in this package,
     // and on products in packages this package depends on.
     .executableTarget(
-      name: "swiftmac",
-      dependencies: ["OggDecoder"],
-      path: "Sources/SwiftMacPackage",
+      name: "mactts",
+      path: "Sources/MacTtsPackage",
       sources: [
-        "logger.swift", "statestore.swift", "soundmanager.swift", "toneplayer.swift", "main.swift",
+        "logger.swift", "statestore.swift", "main.swift",
       ],
       swiftSettings: [
         .unsafeFlags(["-suppress-warnings"])
